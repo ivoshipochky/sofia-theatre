@@ -1,0 +1,129 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getDB, GENRES } from '../../lib/db';
+
+const db = getDB(Astro.locals.runtime);
+const url = new URL(Astro.request.url);
+const genre = url.searchParams.get('genre') || '';
+const theatre = url.searchParams.get('theatre') || '';
+const page = parseInt(url.searchParams.get('page') || '1');
+const perPage = 12;
+const offset = (page - 1) * perPage;
+
+let query = `
+  SELECT s.*, t.name as theatre_name, t.slug as theatre_slug,
+    COALESCE((SELECT ROUND(AVG(score), 1) FROM ratings WHERE show_id = s.id), 0) as avg_rating,
+    COALESCE((SELECT COUNT(*) FROM ratings WHERE show_id = s.id), 0) as rating_count
+  FROM shows s
+  JOIN theatres t ON t.id = s.theatre_id
+  WHERE 1=1
+`;
+let countQuery = `SELECT COUNT(*) as total FROM shows s WHERE 1=1`;
+const params: any[] = [];
+const countParams: any[] = [];
+
+if (genre) {
+  query += ` AND s.genre = ?`;
+  countQuery += ` AND s.genre = ?`;
+  params.push(genre);
+  countParams.push(genre);
+}
+if (theatre) {
+  query += ` AND t.slug = ?`;
+  countQuery += ` AND s.theatre_id = (SELECT id FROM theatres WHERE slug = ?)`;
+  params.push(theatre);
+  countParams.push(theatre);
+}
+
+query += ` ORDER BY s.updated_at DESC LIMIT ? OFFSET ?`;
+params.push(perPage, offset);
+
+const shows = await db.prepare(query).bind(...params).all();
+const countResult = await db.prepare(countQuery).bind(...countParams).first<{ total: number }>();
+const total = countResult?.total || 0;
+const totalPages = Math.ceil(total / perPage);
+
+const theatres = await db.prepare('SELECT slug, name FROM theatres ORDER BY name').all();
+
+const activeGenre = GENRES.find(g => g.slug === genre);
+const pageTitle = activeGenre ? `${activeGenre.label} — Театър София` : 'Всички представления — Театър София';
+---
+
+<Layout title={pageTitle}>
+  <h1 class="text-3xl font-bold mb-6">
+    {activeGenre ? activeGenre.label : 'Всички представления'}
+  </h1>
+
+  <!-- Filters -->
+  <div class="flex flex-wrap gap-2 mb-8">
+    <a href="/shows"
+      class:list={['px-4 py-2 rounded-full text-sm transition-colors', !genre ? 'bg-amber-500 text-zinc-900 font-medium' : 'bg-zinc-800 hover:bg-zinc-700']}>
+      Всички
+    </a>
+    {GENRES.map(g => (
+      <a href={`/shows?genre=${g.slug}${theatre ? `&theatre=${theatre}` : ''}`}
+        class:list={['px-4 py-2 rounded-full text-sm transition-colors', genre === g.slug ? 'bg-amber-500 text-zinc-900 font-medium' : 'bg-zinc-800 hover:bg-zinc-700']}>
+        {g.label}
+      </a>
+    ))}
+  </div>
+
+  <!-- Theatre filter -->
+  {theatres.results.length > 1 && (
+    <div class="mb-6">
+      <select id="theatre-filter" class="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm"
+        onchange={`window.location.href='/shows?${genre ? 'genre='+genre+'&' : ''}theatre='+this.value`}>
+        <option value="">Всички театри</option>
+        {theatres.results.map((t: any) => (
+          <option value={t.slug} selected={t.slug === theatre}>{t.name}</option>
+        ))}
+      </select>
+    </div>
+  )}
+
+  <!-- Shows grid -->
+  {shows.results.length === 0 ? (
+    <p class="text-zinc-500 py-8">Няма намерени представления.</p>
+  ) : (
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {shows.results.map((show: any) => (
+        <a href={`/shows/${show.slug}`}
+          class="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden hover:border-amber-500/50 transition-colors group">
+          {show.image_url && (
+            <img src={show.image_url} alt={show.title}
+              class="w-full h-48 object-cover group-hover:opacity-90 transition-opacity" />
+          )}
+          <div class="p-4">
+            <div class="flex justify-between items-start mb-2">
+              <h3 class="font-semibold text-lg">{show.title}</h3>
+              {show.avg_rating > 0 && (
+                <span class="text-amber-400 text-sm">★ {show.avg_rating}</span>
+              )}
+            </div>
+            <p class="text-zinc-400 text-sm">{show.theatre_name}</p>
+            {show.genre && (
+              <span class="inline-block mt-2 bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded text-xs">
+                {show.genre}
+              </span>
+            )}
+          </div>
+        </a>
+      ))}
+    </div>
+  )}
+
+  <!-- Pagination -->
+  {totalPages > 1 && (
+    <div class="flex justify-center gap-2 mt-10">
+      {page > 1 && (
+        <a href={`/shows?page=${page-1}${genre ? '&genre='+genre : ''}${theatre ? '&theatre='+theatre : ''}`}
+          class="px-4 py-2 bg-zinc-800 rounded hover:bg-zinc-700 transition-colors">← Назад</a>
+      )}
+      <span class="px-4 py-2 text-zinc-400">Страница {page} от {totalPages}</span>
+      {page < totalPages && (
+        <a href={`/shows?page=${page+1}${genre ? '&genre='+genre : ''}${theatre ? '&theatre='+theatre : ''}`}
+          class="px-4 py-2 bg-zinc-800 rounded hover:bg-zinc-700 transition-colors">Напред →</a>
+      )}
+    </div>
+  )}
+</Layout>

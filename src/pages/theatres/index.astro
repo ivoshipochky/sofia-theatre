@@ -1,0 +1,31 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getDB } from '../../lib/db';
+
+const db = getDB(Astro.locals.runtime);
+
+const theatres = await db.prepare(`
+  SELECT t.*,
+    (SELECT COUNT(*) FROM shows WHERE theatre_id = t.id) as show_count
+  FROM theatres t
+  ORDER BY t.name
+`).all();
+---
+
+<Layout title="Театри — Театър София">
+  <h1 class="text-3xl font-bold mb-6">Театри в София</h1>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {theatres.results.map((t: any) => (
+      <a href={`/theatres/${t.slug}`}
+        class="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-amber-500/50 transition-colors">
+        <h2 class="text-xl font-semibold mb-2">{t.name}</h2>
+        {t.address && <p class="text-zinc-400 text-sm mb-2">{t.address}</p>}
+        <p class="text-zinc-500 text-sm">{t.show_count} представления</p>
+        {t.website && (
+          <span class="text-amber-400 text-sm mt-2 inline-block">Виж сайта →</span>
+        )}
+      </a>
+    ))}
+  </div>
+</Layout>

@@ -1,0 +1,29 @@
+{
+	"main": "dist/_worker.js/index.js",
+	"name": "sofia-theatre",
+	"compatibility_date": "2026-02-16",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./dist"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "sofia-theatre-db",
+			"database_id": "YOUR_D1_DATABASE_ID"
+		}
+	],
+	"vars": {
+		"GOOGLE_CLIENT_ID": "",
+		"GOOGLE_CLIENT_SECRET": "",
+		"JWT_SECRET": "",
+		"SITE_URL": "http://localhost:4321"
+	}
+}

@@ -1,0 +1,117 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getDB, GENRES } from '../lib/db';
+
+const db = getDB(Astro.locals.runtime);
+
+// Upcoming performances (next 14 days)
+const upcoming = await db.prepare(`
+  SELECT s.*, t.name as theatre_name, p.date, p.time, p.venue, p.ticket_url,
+    COALESCE((SELECT ROUND(AVG(score), 1) FROM ratings WHERE show_id = s.id), 0) as avg_rating,
+    COALESCE((SELECT COUNT(*) FROM ratings WHERE show_id = s.id), 0) as rating_count
+  FROM shows s
+  JOIN performances p ON p.show_id = s.id
+  JOIN theatres t ON t.id = s.theatre_id
+  WHERE p.date >= date('now')
+  AND p.date <= date('now', '+14 days')
+  ORDER BY p.date ASC, p.time ASC
+  LIMIT 12
+`).all();
+
+// Top rated shows
+const topRated = await db.prepare(`
+  SELECT s.*, t.name as theatre_name,
+    ROUND(AVG(r.score), 1) as avg_rating,
+    COUNT(r.id) as rating_count
+  FROM shows s
+  JOIN ratings r ON r.show_id = s.id
+  JOIN theatres t ON t.id = s.theatre_id
+  GROUP BY s.id
+  HAVING rating_count >= 1
+  ORDER BY avg_rating DESC
+  LIMIT 6
+`).all();
+---
+
+<Layout title="Театър София — Всички представления в София">
+  <!-- Hero -->
+  <section class="text-center py-12">
+    <h1 class="text-4xl font-bold mb-4">Театрални представления в София</h1>
+    <p class="text-zinc-400 text-lg max-w-2xl mx-auto">
+      Всички представления от всички театри на едно място. Филтрирай по жанр, оценявай и планирай вечерта си.
+    </p>
+    <div class="mt-6 flex justify-center gap-3 flex-wrap">
+      {GENRES.slice(0, 6).map(g => (
+        <a href={`/shows?genre=${g.slug}`}
+          class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full text-sm transition-colors">
+          {g.label}
+        </a>
+      ))}
+      <a href="/shows" class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-full text-sm transition-colors">
+        Всички →
+      </a>
+    </div>
+  </section>
+
+  <!-- Upcoming Shows -->
+  <section class="mt-8">
+    <h2 class="text-2xl font-bold mb-6">Предстоящи представления</h2>
+    {upcoming.results.length === 0 ? (
+      <p class="text-zinc-500">Няма предстоящи представления в момента. Данните ще се заредят скоро.</p>
+    ) : (
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {upcoming.results.map((show: any) => (
+          <a href={`/shows/${show.slug}`}
+            class="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden hover:border-amber-500/50 transition-colors group">
+            {show.image_url && (
+              <img src={show.image_url} alt={show.title}
+                class="w-full h-48 object-cover group-hover:opacity-90 transition-opacity" />
+            )}
+            <div class="p-4">
+              <div class="flex justify-between items-start mb-2">
+                <h3 class="font-semibold text-lg">{show.title}</h3>
+                {show.avg_rating > 0 && (
+                  <span class="text-amber-400 text-sm flex items-center gap-1">
+                    ★ {show.avg_rating}
+                  </span>
+                )}
+              </div>
+              <p class="text-zinc-400 text-sm">{show.theatre_name}</p>
+              <div class="mt-2 flex items-center gap-3 text-sm text-zinc-500">
+                <span>{new Date(show.date).toLocaleDateString('bg-BG', { day: 'numeric', month: 'long' })}</span>
+                {show.time && <span>{show.time}</span>}
+                {show.venue && <span>• {show.venue}</span>}
+              </div>
+              {show.genre && (
+                <span class="inline-block mt-2 bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded text-xs">
+                  {show.genre}
+                </span>
+              )}
+            </div>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+
+  <!-- Top Rated -->
+  {topRated.results.length > 0 && (
+    <section class="mt-16">
+      <h2 class="text-2xl font-bold mb-6">Най-високо оценени</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {topRated.results.map((show: any) => (
+          <a href={`/shows/${show.slug}`}
+            class="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-amber-500/50 transition-colors">
+            <div class="flex justify-between items-start mb-1">
+              <h3 class="font-semibold">{show.title}</h3>
+              <span class="text-amber-400 text-sm flex items-center gap-1">
+                ★ {show.avg_rating} <span class="text-zinc-500">({show.rating_count})</span>
+              </span>
+            </div>
+            <p class="text-zinc-400 text-sm">{show.theatre_name}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
+</Layout>

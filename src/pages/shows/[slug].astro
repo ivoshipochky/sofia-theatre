@@ -1,0 +1,256 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getDB } from '../../lib/db';
+
+const { slug } = Astro.params;
+const db = getDB(Astro.locals.runtime);
+
+const show = await db.prepare(`
+  SELECT s.*, t.name as theatre_name, t.slug as theatre_slug, t.website as theatre_website,
+    COALESCE((SELECT ROUND(AVG(score), 1) FROM ratings WHERE show_id = s.id), 0) as avg_rating,
+    COALESCE((SELECT COUNT(*) FROM ratings WHERE show_id = s.id), 0) as rating_count
+  FROM shows s
+  JOIN theatres t ON t.id = s.theatre_id
+  WHERE s.slug = ?
+`).bind(slug).first();
+
+if (!show) {
+  return Astro.redirect('/shows');
+}
+
+const performances = await db.prepare(`
+  SELECT * FROM performances
+  WHERE show_id = ? AND date >= date('now')
+  ORDER BY date ASC, time ASC
+`).bind(show.id).all();
+
+const ratings = await db.prepare(`
+  SELECT r.*, u.name as user_name, u.avatar_url as user_avatar
+  FROM ratings r
+  JOIN users u ON u.id = r.user_id
+  WHERE r.show_id = ?
+  ORDER BY r.created_at DESC
+  LIMIT 20
+`).bind(show.id).all();
+
+const castList = show.cast_list ? JSON.parse(show.cast_list as string) : [];
+---
+
+<Layout title={`${show.title} — Театър София`}>
+  <div class="max-w-4xl mx-auto">
+    <!-- Breadcrumb -->
+    <nav class="text-sm text-zinc-500 mb-6">
+      <a href="/shows" class="hover:text-amber-400">Представления</a>
+      <span class="mx-2">›</span>
+      <span class="text-zinc-300">{show.title}</span>
+    </nav>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <!-- Left: Image -->
+      <div>
+        {show.image_url ? (
+          <img src={show.image_url as string} alt={show.title as string}
+            class="w-full rounded-lg" />
+        ) : (
+          <div class="w-full aspect-[3/4] bg-zinc-800 rounded-lg flex items-center justify-center text-zinc-600 text-6xl">
+            🎭
+          </div>
+        )}
+      </div>
+
+      <!-- Right: Details -->
+      <div class="md:col-span-2">
+        <h1 class="text-3xl font-bold mb-2">{show.title}</h1>
+
+        <div class="flex items-center gap-4 mb-4">
+          <a href={`/theatres/${show.theatre_slug}`} class="text-amber-400 hover:text-amber-300">
+            {show.theatre_name}
+          </a>
+          {show.genre && (
+            <a href={`/shows?genre=${show.genre}`}
+              class="bg-zinc-800 px-3 py-1 rounded-full text-sm hover:bg-zinc-700">
+              {show.genre}
+            </a>
+          )}
+        </div>
+
+        <!-- Rating summary -->
+        <div class="flex items-center gap-3 mb-6">
+          <div class="flex text-amber-400 text-xl" id="avg-stars">
+            {[1,2,3,4,5].map(i => (
+              <span class={i <= Math.round(show.avg_rating as number) ? '' : 'opacity-30'}>★</span>
+            ))}
+          </div>
+          <span class="text-zinc-400">
+            {show.avg_rating > 0 ? `${show.avg_rating} / 5` : 'Няма оценки'}
+            {show.rating_count > 0 && ` (${show.rating_count} оценки)`}
+          </span>
+        </div>
+
+        {show.description && (
+          <div class="text-zinc-300 mb-6 leading-relaxed">
+            {show.description}
+          </div>
+        )}
+
+        {show.director && (
+          <p class="text-zinc-400 mb-2">
+            <span class="text-zinc-500">Режисьор:</span> {show.director}
+          </p>
+        )}
+
+        {castList.length > 0 && (
+          <p class="text-zinc-400 mb-4">
+            <span class="text-zinc-500">Участват:</span> {castList.join(', ')}
+          </p>
+        )}
+
+        {show.source_url && (
+          <a href={show.source_url as string} target="_blank" rel="noopener noreferrer"
+            class="text-amber-400 hover:text-amber-300 text-sm">
+            Виж в сайта на театъра →
+          </a>
+        )}
+      </div>
+    </div>
+
+    <!-- Upcoming Performances -->
+    {performances.results.length > 0 && (
+      <section class="mt-12">
+        <h2 class="text-2xl font-bold mb-4">Предстоящи дати</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {performances.results.map((p: any) => (
+            <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex justify-between items-center">
+              <div>
+                <p class="font-medium">
+                  {new Date(p.date).toLocaleDateString('bg-BG', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
+                <p class="text-zinc-400 text-sm">
+                  {p.time && `${p.time} ч.`}
+                  {p.venue && ` • ${p.venue}`}
+                </p>
+              </div>
+              {p.ticket_url && (
+                <a href={p.ticket_url} target="_blank" rel="noopener noreferrer"
+                  class="bg-amber-500 text-zinc-900 px-3 py-1.5 rounded text-sm font-medium hover:bg-amber-400 transition-colors whitespace-nowrap">
+                  Билети
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <!-- Rating Form -->
+    <section class="mt-12" id="rate-section">
+      <h2 class="text-2xl font-bold mb-4">Оцени представлението</h2>
+      <div id="rating-form" data-show-id={show.id}>
+        <div class="flex gap-1 text-3xl cursor-pointer" id="star-input">
+          {[1,2,3,4,5].map(i => (
+            <span data-value={i} class="text-zinc-600 hover:text-amber-400 transition-colors select-none">★</span>
+          ))}
+        </div>
+        <textarea id="review-input" placeholder="Напиши ревю (незадължително)..."
+          class="w-full mt-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm resize-none h-24 focus:border-amber-500/50 focus:outline-none"></textarea>
+        <button id="submit-rating"
+          class="mt-2 bg-amber-500 text-zinc-900 px-6 py-2 rounded font-medium hover:bg-amber-400 transition-colors">
+          Изпрати оценка
+        </button>
+        <p id="rating-msg" class="mt-2 text-sm hidden"></p>
+      </div>
+    </section>
+
+    <!-- Reviews -->
+    {ratings.results.length > 0 && (
+      <section class="mt-12">
+        <h2 class="text-2xl font-bold mb-4">Ревюта</h2>
+        <div class="space-y-4">
+          {ratings.results.map((r: any) => (
+            <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  {r.user_avatar && (
+                    <img src={r.user_avatar} alt="" class="w-6 h-6 rounded-full" />
+                  )}
+                  <span class="font-medium text-sm">{r.user_name || 'Анонимен'}</span>
+                </div>
+                <div class="text-amber-400 text-sm">
+                  {'★'.repeat(r.score)}{'★'.repeat(5 - r.score).split('').map(() => '☆').join('')}
+                </div>
+              </div>
+              {r.review && <p class="text-zinc-300 text-sm">{r.review}</p>}
+              <p class="text-zinc-600 text-xs mt-2">
+                {new Date(r.created_at).toLocaleDateString('bg-BG')}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+  </div>
+
+  <script>
+    let selectedRating = 0;
+    const stars = document.querySelectorAll('#star-input span');
+    const submitBtn = document.getElementById('submit-rating') as HTMLButtonElement;
+    const reviewInput = document.getElementById('review-input') as HTMLTextAreaElement;
+    const ratingMsg = document.getElementById('rating-msg') as HTMLElement;
+    const showId = document.getElementById('rating-form')?.dataset.showId;
+
+    stars.forEach(star => {
+      star.addEventListener('click', () => {
+        selectedRating = parseInt((star as HTMLElement).dataset.value || '0');
+        stars.forEach((s, i) => {
+          (s as HTMLElement).className = i < selectedRating
+            ? 'text-amber-400 hover:text-amber-400 transition-colors select-none'
+            : 'text-zinc-600 hover:text-amber-400 transition-colors select-none';
+        });
+      });
+    });
+
+    submitBtn?.addEventListener('click', async () => {
+      if (!selectedRating) {
+        ratingMsg.textContent = 'Моля, изберете оценка.';
+        ratingMsg.className = 'mt-2 text-sm text-red-400';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Изпращане...';
+
+      try {
+        const res = await fetch('/api/ratings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            show_id: parseInt(showId || '0'),
+            score: selectedRating,
+            review: reviewInput.value.trim() || null,
+          }),
+        });
+
+        if (res.status === 401) {
+          window.location.href = `/api/auth/google?redirect=${encodeURIComponent(window.location.pathname + '#rate-section')}`;
+          return;
+        }
+
+        if (res.ok) {
+          ratingMsg.textContent = 'Оценката е записана! Благодарим!';
+          ratingMsg.className = 'mt-2 text-sm text-green-400';
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          const data = await res.json();
+          ratingMsg.textContent = data.error || 'Грешка при записване.';
+          ratingMsg.className = 'mt-2 text-sm text-red-400';
+        }
+      } catch {
+        ratingMsg.textContent = 'Грешка при връзката. Опитайте отново.';
+        ratingMsg.className = 'mt-2 text-sm text-red-400';
+      }
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Изпрати оценка';
+    });
+  </script>
+</Layout>

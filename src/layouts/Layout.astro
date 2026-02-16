@@ -1,0 +1,65 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'Театър София — Всички представления' } = Astro.props;
+---
+
+<html lang="bg">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Каталог на всички театрални представления в София" />
+    <title>{title}</title>
+  </head>
+  <body class="bg-zinc-950 text-zinc-100 min-h-screen">
+    <nav class="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm sticky top-0 z-50">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <a href="/" class="text-xl font-bold text-amber-400 hover:text-amber-300 transition-colors">
+          🎭 Театър София
+        </a>
+        <div class="flex items-center gap-6 text-sm">
+          <a href="/shows" class="hover:text-amber-400 transition-colors">Представления</a>
+          <a href="/theatres" class="hover:text-amber-400 transition-colors">Театри</a>
+          <div id="auth-area">
+            <a href="/api/auth/google" class="bg-amber-500 text-zinc-900 px-3 py-1.5 rounded font-medium hover:bg-amber-400 transition-colors text-sm">
+              Вход
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+      <slot />
+    </main>
+
+    <footer class="border-t border-zinc-800 mt-16 py-8 text-center text-zinc-500 text-sm">
+      <p>&copy; {new Date().getFullYear()} Театър София. Данните се обновяват автоматично.</p>
+    </footer>
+
+    <script>
+      // Check auth state and update nav
+      async function checkAuth() {
+        try {
+          const res = await fetch('/api/auth/me');
+          if (res.ok) {
+            const user = await res.json();
+            const area = document.getElementById('auth-area');
+            if (area && user.name) {
+              area.innerHTML = `
+                <span class="text-zinc-400">${user.name}</span>
+                <a href="/api/auth/logout" class="text-zinc-400 hover:text-amber-400 transition-colors">Изход</a>
+              `;
+            }
+          }
+        } catch {}
+      }
+      checkAuth();
+    </script>
+  </body>
+</html>

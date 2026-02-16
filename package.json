@@ -1,0 +1,19 @@
+{
+  "name": "sofia-theatre",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "wrangler pages dev dist",
+    "db:init": "wrangler d1 execute sofia-theatre-db --local --file=schema.sql",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.6.12",
+    "@tailwindcss/vite": "^4.1.18",
+    "astro": "^5.17.1",
+    "tailwindcss": "^4.1.18",
+    "wrangler": "^4.65.0"
+  }
+}
